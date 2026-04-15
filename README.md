@@ -17,17 +17,10 @@ Replace this paragraph with your own summary of what your version does.
 
 ## How The System Works
 
-Explain your design in plain language.
-
-Some prompts to answer:
-
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
-
-You can include a simple diagram or bullet list if helpful.
+Real-world music recommenders not only look for songs that the user has heard before, but also their properties. They use these properties such as mood, genre, tempo etc. to evaluate why a user liked a certain song and then recommends other songs that generally share these properties. My system will prioritize how close a certain property is to a user's preferences rather than prioritizing which property consists of the largest score. For example, a song with energy closer to a user's target energy will be recommended more likely than the one with the most energy.
+Each `Song` includes concrete features and general facts about the song like id, title, artist, genre, mood, energy, tempo_bpm, valence, danceability, and acousticness.
+Each `UserProfile` includes user's preferences such as favorite_genre, favorite_mood, target_energy, and likes_acoustic.
+The `Recommender` computes a score for each song by measuring how closely its genre, mood, energy, valence, and acousticness match the user's profile, combines those into a weighted total between 0 and 1, then returns the top songs with the highest scores.
 
 ---
 
