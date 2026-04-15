@@ -22,6 +22,16 @@ Each `Song` includes concrete features and general facts about the song like id,
 Each `UserProfile` includes user's preferences such as favorite_genre, favorite_mood, target_energy, and likes_acoustic.
 The `Recommender` computes a score for each song by measuring how closely its genre, mood, energy, valence, and acousticness match the user's profile, combines those into a weighted total between 0 and 1, then returns the top songs with the highest scores.
 
+![Mermaid.js flowchart to visualize design](image.png)
+
+Algorithm Recipe:
+Genre will carry the most weight since it is the strongest signal determined by a listener's identity (+2.0 points).
+Mood is weighted second because it represents the user's current context and why they are listening to a certain song during a certain event in their life (+1.5 points).
+Energy similarity (+0.0 to +1.5 points) is calculated based on how close a song's energy is to the user's target energy, and acousticness (+0.5 points) is considered only if a user prefers acoustic songs.
+
+Potential Biases:
+Sometimes, the mood and energy of a user may be more important to them than the genre. However, since genre has the highest weight, a song meeting the user's mood and energy requirements but in a different genre may not be recommended to the user even though they may prefer this option more. Additionally, there are only a few songs in the catalog, so the top result may not be ideal for the user.
+
 ---
 
 ## Getting Started
