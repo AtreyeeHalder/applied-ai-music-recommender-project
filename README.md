@@ -20,6 +20,16 @@ CadenceMatcher 2.0 evolves the original rule-based recommender into a conversati
 
 ---
 
+## Video Walkthrough
+
+[▶ Watch Demo](https://drive.google.com/file/d/1HLFjV-ZkrxZntrwoWCUdRM2zZw4YqEB6/view?usp=sharing)
+
+The walkthrough demonstrates guardrails testing for reliability, batch evaluation for scoring on standard and adversarial profiles, and AI agent end-to-end for demontrating the agentic loop.
+
+[Due to technical difficulties I was unable to record using mic, so I uploaded a screen recording demo]
+
+---
+
 ## Architecture Overview
 
 - **Entry point:** All input (natural language queries or CLI flags) enters through `main.py`, which routes to one of two paths.
