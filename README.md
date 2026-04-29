@@ -209,7 +209,7 @@ python -m src.main
 
 ## Testing Summary
 
-The project was tested through two complementary methods: a pytest suite targeting the scoring engine and recommender logic directly, and a manual batch evaluation running 8 predefined profiles (4 standard, 4 adversarial) through the full pipeline.
+The project was tested through two complementary methods: a pytest suite targeting the scoring engine and recommender logic directly, and a manual batch evaluation running 8 predefined profiles (4 standard, 4 adversarial) through the full pipeline. Throughout all testing, structured error logging via `logger.py` captured every tool call and agent iteration — DEBUG-level events (catalog loads, score computations, agent steps) were written to `logs/recommender.log`, while WARNING-level events (unexpected LLM outputs, missing fields) surfaced directly to stderr, making it straightforward to trace failures back to the specific iteration or tool call where they occurred.
 
 - Scoring math is precise and predictable. All exact-value unit tests passed.
 - `explain_recommendation()` always produces output. Even when no attributes matched (genre miss, mood miss, maximum energy difference), the method returned a non-empty explanation string rather than failing.
