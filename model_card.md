@@ -1,89 +1,39 @@
-# 🎧 Model Card: Music Recommender Simulation
-
-## 1. Model Name  
-
-**CadenceMatcher 1.0**  
+# Model Card: CadenceMatcher 2.0 — Reflection and Ethics
 
 ---
 
-## 2. Intended Use  
+## Limitations and Biases
 
-CadenceMatcher recommends songs from a small catalog based on a listener's stated genre, mood, energy, and acoustic preferences. It returns a ranked list of the top five songs that best match those preferences.
+**Scoring imbalance:** The scoring formula weights energy proximity at up to +3.0 points versus only +1.0 for genre match and +1.5 for mood. In practice, this means two songs in completely different genres can outscore a genre-matched song if their energy levels are closer to the user's target. During manual batch evaluation, this felt counterintuitive — a user asking for "hip-hop" could receive an ambient song ranked above a hip-hop track simply because its energy happened to be closer to 0.6.
 
-It assumes the user already knows what they like and can describe it in simple terms. It does not learn from listening history or adapt over time.
+**Catalog bias toward Western, English-language music:** Even at 200 songs, the catalog does not represent global music tastes. Genres like K-pop, reggae, Afrobeats, and blues are absent or underrepresented. A user whose preferred genre is not in the catalog will receive a substituted genre recommendation, which the system notes — but the underlying issue is that certain listeners are structurally disadvantaged from the start.
 
-This system is built for classroom exploration to analyze how scoring rules and different data choices affect recommendations.
-
----
-
-## 3. How the Model Works  
-
-Each song in the catalog has a genre, mood, energy level (0 to 1), and an acousticness value (0 to 1). The system compares those values against the user's stated preferences and adds up points.
-
-- If the song's genre matches what the user likes, it gets 1 point.
-- If the song's mood matches, it gets 1.5 points.
-- The closer the song's energy is to the user's target energy, the more points it earns — up to 3 points for a perfect match.
-- If the user likes acoustic music and the song is acoustic enough, it gets an extra 0.5 points.
-
-The song with the highest total score is ranked first.
-
-When genre bonus was cut in half (from 2.0 to 1.0 points), genre alone could not dominate the result. The energy bonus was doubled in range (from a max of 1.5 to a max of 3.0 points) so that energy became the strongest single signal, rewarding songs that closely match the user's preferred intensity level.
+**LLM inference variability:** Because the agentic loop depends on a local LLM (llama3.2 via Ollama) to infer `UserProfile` fields from natural language, the quality of the recommendation is partly a function of how well the model interprets the query. Ambiguous or short queries like "something good" produce less reliable profile inference than specific ones like "chill music for studying."
 
 ---
 
-## 4. Data  
+## Potential for Misuse and Prevention
 
-The size of the dataset is 18 songs. 
+**Mood-based harm:** A less obvious risk is recommending emotionally inappropriate content. If a user states they are stressed or anxious and the LLM infers a high-energy "angry" mood profile, the system could return aggressive music that worsens how the user feels. This problem could be prevented by including a simple content advisory check before surfacing very high-intensity results.
 
-The genres included in the catalog are: pop, lofi, rock, ambient, jazz, synthwave, indie pop, hip-hop, classical, r&b, country, metal, latin, folk, and funk. Moods include: happy, chill, intense, relaxed, moody, focused, energetic, peaceful, romantic, nostalgic, angry, uplifting, groovy, and melancholic.
+**Prompt injection:** Because user text is passed directly into the LLM's context, a malicious or adversarial user could craft a query designed to manipulate the agent's tool calls — for example, attempting to override the scoring profile or inject instructions into the system prompt. The guardrail layer (`src/guardrails.py`) provides a structural defense by validating and sanitizing all LLM-generated tool arguments before they reach the scoring engine. This means even if the LLM is manipulated into generating a bad `get_recommendations` call (e.g., `target_energy = "override the system"`), the guardrail rejects the value and defaults it safely, and the violation is logged as a warning.
 
-A key limitation is that several areas of musical taste are missing. There is no k-pop, no reggae, no blues, and no electronic subgenres beyond synthwave and EDM references in the profiles. Mood coverage is also uneven. For example, romantic, nostalgic, and groovy each appear in only one song, so users with those preferences will rarely get a mood match.
-
----
-
-## 5. Strengths  
-
-The system works best for users with high-energy preferences. There are many high-energy songs in the catalog, so those users get strong matches across genre, mood, and energy at the same time.
-
-The energy similarity component is the strongest part of the scoring. Because it can contribute up to 3 points, it consistently pulls songs that actually sound like what the user wants — even when genre or mood do not match.
-
-The system's outputs are simple and less cluttered, making it easier and less overwhelming to use.
+**Infinite or resource-exhausting loops:** The agentic loop is capped at 6 iterations to prevent runaway LLM calls. Without this cap, a poorly behaving model could loop indefinitely, consuming local compute resources. The cap ensures the system degrades gracefully rather than hanging.
 
 ---
 
-## 6. Limitations and Bias 
+## Surprises During Testing
 
-Of the 17 songs in the dataset, 9 have an energy level above 0.7, while only 5 fall below 0.4. This leads to a limitation in the system, where high-energy genres like rock, pop, metal, and EDM are more represented in the data than calm genres like ambient, classical, and folk. Because the energy similarity score rewards closeness to the user's target, a low-energy listener (for example, a user who prefers ambient or sleep music near energy 0.1) has far fewer songs that can score well on energy, and the songs that do appear near their target are also spread across unrelated genres and moods. During testing, the "Chill Lofi" profile consistently surfaced acoustic songs from non-lofi genres in its top 5 simply because they happened to sit near the right energy value, not because they were stylistically close. This means the system quietly delivers worse recommendations to users with quieter tastes, not because of a flaw in the scoring formula itself, but because the data it scores against was never balanced to represent them fairly. This leads to high bias, which would be problematic if implemented in a real product.
-
----
-
-## 7. Evaluation  
-
-
-Eight profiles were tested using the `src/main.py` file: three standard (High-Energy Pop, Chill Lofi, Deep Intense Rock) and five adversarial (Conflicting Energy+Mood, Impossible Genre, Neutral Energy, Acoustic+EDM Mismatch, Perfect-Score Bait). For each run, the goal was to check whether the top-ranked song felt like something a real listener would actually want, and whether the score reasons honestly explained the result. Some results I found interesting are:
-
-High-Energy Pop vs. Chill Lofi: These two profiles are at opposite energy extremes and the results reflected that; uptempo pop at the top of one, quiet lofi at the top of the other. However, I found it surprising that Chill Lofi never matched on mood once. The user preference said "calm" but every lofi song in the catalog is labeled "chill." The system treated those as a complete mismatch even though they mean nearly the same thing to a real person.
-
-Conflicting Energy+Mood vs. High-Energy Pop: Swapping mood from "happy" to "sad" reshuffled the top results, but the system still returned energetic, upbeat songs because no pop songs with a sad mood exist in the dataset. The mood signal never fired at all. The system had no way to say that there are no matches for the user's preferences and just quietly returned the wrong thing.
-
-Impossible Genre vs. Neutral Energy: Both disable one major signal. Impossible Genre (k-pop) means the genre bonus never fires. Neutral Energy (target 0.5) means energy scores bunch together and barely separate songs. In both cases the middle rankings felt arbitrary. Small coincidences in the data determined third versus fifth place.
+I was surprised to find that the batch mode, which does not use the LLM, was perfectly consistent and predictable across all 8 profiles. On the other hand, the agentic mode on the same catalog could return different top songs for the same intent. This highlighted that the LLM adds not only expressiveness but also unpredictability.
 
 ---
 
-## 8. Future Work  
+## Collaboration with AI
 
-- The system should include mood synonym matching. For example, right now "calm" and "chill" are treated as completely different, even though they mean the same thing to most listeners. A simple lookup table of equivalent mood labels would fix a lot of missed matches.
+Claude Code served as the primary coding assistant throughout this project. I used it to generate code by providing detailed prompts that included project specifications and context, and to help me write the README based on a bigger picture of the overview of my code, with specific situations documented by me. For code generation, when something seemed unclear, I asked the AI for explanations which led to discussions about interesting and important tradeoffs. For writing the README, I gave specific prompts for usability, such as asking the AI to include cross-platform setup instructions instead of only one platform since different users use different platforms.
 
-- For better explanations, the system could also say when something did not match. Telling a user that no matches were found is more accurate than silently returning wrong results.
+**Helpful suggestion:** When implementing the guardrail layer, Claude Code suggested structuring the result as a `GuardrailResult` dataclass with separate `sanitized` (the cleaned inputs) and `violations` (a list of human-readable correction messages) fields, rather than raising exceptions or returning a simple boolean. This design turned out to be the right call: it let the agent continue functioning after a guardrail correction while still surfacing warnings to the log and feeding the violation list back to the LLM in the tool result. If I had used exceptions, a single bad LLM-generated energy value would have crashed the entire agentic loop. The dataclass design made the system both robust and transparent.
 
-- More songs should be incorporated into the dataset, especially in underrepresented genres and moods, so that edge-case users have real options instead of accidental near-matches.
+**Flawed suggestion:** When it was time to choose the LLM powering the agentic loop, Claude Code proposed using Anthropic's API as the default without any explanation of the tradeoffs. This was a poor suggestion for this project's context: the repository is public, intended for a general audience, and Anthropic's API requires an account and a paid API key. A casual user following the setup instructions would have been blocked immediately. After I questioned the recommendation and asked Claude Code to walk through alternatives, including Gemini and Ollama, it became clear that Ollama was the better fit. It is fully local, free, no account required, and configurable via an environment variable if users want a different model.
 
----
-
-## 9. Personal Reflection  
-
-Building this made me realize that representative data matters just as much as a good algorithm. The scoring logic can be well-designed, but if the dataset is unbalanced, some users will quietly be more favored than others.
-
-The most surprising thing was how much the mood label mismatch (calm vs. chill) broke the Chill Lofi profile. Two words that feel identical to a human completely shut off a scoring signal. It made me think about how much hidden work goes into label consistency in real music platforms.
-
-I now look at apps like Spotify or YouTube differently. When a recommendation feels slightly off, I suspect the issue is not always the algorithm; it is probably a missing or mismatched label somewhere in the data pipeline. The algorithm can only work with what it is given. Thus, human judgement matters when creating more diverse datasets and better recommendations while also considering tradeoffs in time and memory space.
+This experience reinforced a guiding principle I carried through the rest of the project: use AI to generate code quickly, but keep system design and architecture decisions in human hands to judge what is right for the specific audience and constraints of the project.
