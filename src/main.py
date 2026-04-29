@@ -17,9 +17,11 @@ Interactive and --query modes call the Claude API; --batch runs entirely offline
 """
 
 import argparse
+import json
 import sys
 
 from .agent import run_agent
+from .guardrails import validate_recommendation_inputs
 from .logger import get_logger
 from .recommender import load_songs, recommend_songs
 
@@ -164,6 +166,67 @@ def run_batch() -> None:
     logger.info("Batch simulation complete")
 
 
+def run_guardrail_demo() -> None:
+    """
+    Print before/after examples showing the guardrail catching and correcting
+    bad LLM-generated tool call arguments.
+    """
+    _D = "-" * 62
+    test_cases = [
+        {
+            "label": "Test 1: Energy above 1.0 (LLM returned 1.5)",
+            "inputs": {"target_energy": 1.5,  "favorite_genre": "pop",  "favorite_mood": "happy",     "likes_acoustic": False, "k": 5},
+        },
+        {
+            "label": "Test 2: Energy below 0.0 (LLM returned -0.3)",
+            "inputs": {"target_energy": -0.3, "favorite_genre": "rock", "favorite_mood": "angry",     "likes_acoustic": False, "k": 5},
+        },
+        {
+            "label": "Test 3: Non-numeric energy (LLM hallucinated a string)",
+            "inputs": {"target_energy": "very high", "favorite_genre": "edm", "favorite_mood": "energetic", "likes_acoustic": False, "k": 5},
+        },
+        {
+            "label": "Test 4: Empty genre string",
+            "inputs": {"target_energy": 0.8,  "favorite_genre": "",     "favorite_mood": "happy",     "likes_acoustic": False, "k": 5},
+        },
+        {
+            "label": "Test 5: k=0 (LLM requested zero results)",
+            "inputs": {"target_energy": 0.7,  "favorite_genre": "jazz", "favorite_mood": "calm",      "likes_acoustic": True,  "k": 0},
+        },
+        {
+            "label": "Test 6: k=999 (absurdly large result count)",
+            "inputs": {"target_energy": 0.5,  "favorite_genre": "lofi", "favorite_mood": "chill",     "likes_acoustic": True,  "k": 999},
+        },
+        {
+            "label": "Test 7: Valid input - no violations expected",
+            "inputs": {"target_energy": 0.6,  "favorite_genre": "lofi", "favorite_mood": "chill",     "likes_acoustic": True,  "k": 3},
+        },
+    ]
+
+    _DISPLAY_KEYS = ["target_energy", "favorite_genre", "favorite_mood", "k"]
+
+    print("\n" + "=" * 62)
+    print("  Guardrail Demo: Input Validation for LLM Tool Calls")
+    print("=" * 62)
+
+    for case in test_cases:
+        print(f"\n{case['label']}")
+        print(_D)
+        original = case["inputs"]
+        brief_in = {k: original[k] for k in _DISPLAY_KEYS}
+        print(f"  Input    : {json.dumps(brief_in)}")
+        result = validate_recommendation_inputs(original)
+        if result.violations:
+            for v in result.violations:
+                print(f"  VIOLATION: {v}")
+            brief_out = {k: result.sanitized[k] for k in _DISPLAY_KEYS}
+            print(f"  Output   : {json.dumps(brief_out)}")
+        else:
+            print("  OK       : no violations - input passed through unchanged")
+
+    print(f"\n{'=' * 62}\n")
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -186,12 +249,18 @@ def main() -> None:
         "--query", metavar="TEXT",
         help="one-shot natural-language query to the agent",
     )
+    group.add_argument(
+        "--guardrails", action="store_true",
+        help="demonstrate input guardrail behavior with before/after examples",
+    )
     args = parser.parse_args()
 
     if args.batch:
         run_batch()
     elif args.query:
         run_single_query(args.query)
+    elif args.guardrails:
+        run_guardrail_demo()
     else:
         run_interactive()
 

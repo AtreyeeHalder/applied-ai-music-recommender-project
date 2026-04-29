@@ -16,6 +16,7 @@ from typing import Optional
 
 from openai import OpenAI
 
+from .guardrails import validate_recommendation_inputs
 from .logger import get_logger
 from .recommender import load_songs, recommend_songs
 
@@ -226,6 +227,10 @@ def _execute_tool(name: str, inputs: dict, catalog: Optional[list]) -> dict:
     if name == "get_recommendations":
         if catalog is None:
             raise ValueError("Catalog not loaded — call load_catalog first")
+        guard = validate_recommendation_inputs(inputs)
+        for violation in guard.violations:
+            logger.warning("Guardrail: %s", violation)
+        inputs = guard.sanitized
         prefs = {
             "favorite_genre": inputs["favorite_genre"],
             "favorite_mood": inputs["favorite_mood"],
@@ -235,7 +240,7 @@ def _execute_tool(name: str, inputs: dict, catalog: Optional[list]) -> dict:
         k = int(inputs.get("k", 5))
         recs = recommend_songs(prefs, catalog, k=k)
         logger.info("Recommendations computed: top %d for prefs=%s", k, prefs)
-        return {
+        result: dict = {
             "recommendations": [
                 {
                     "title": s["title"],
@@ -249,5 +254,8 @@ def _execute_tool(name: str, inputs: dict, catalog: Optional[list]) -> dict:
                 for s, score, reasons in recs
             ]
         }
+        if guard.violations:
+            result["guardrail_warnings"] = guard.violations
+        return result
 
     raise ValueError(f"Unknown tool: {name!r}")
