@@ -140,92 +140,101 @@ python -m src.main --batch
 
 **Run tests:**
 ```bash
-pytest
+python -m pytest
 ```
 
 ---
 
 ## Sample Interactions
 
-### Example 1
+### Mode 1 — Batch Simulation
 
-**Input:**
-```
-[Sample user input or query]
-```
-
-**Output:**
-```
-[Resulting AI output]
+**Input (Windows CMD):**
+```cmd
+python -m src.main --batch
 ```
 
----
+**Output — Standard Profiles:**
 
-### Example 2
+![Mode 1 - Screenshot 1](assets/Mode%201%20ss1.png)
+![Mode 1 - Screenshot 2](assets/Mode%201%20ss2.png)
 
-**Input:**
-```
-[Sample user input or query]
-```
+**Output — Advanced (Adversarial) Profiles:**
 
-**Output:**
-```
-[Resulting AI output]
-```
+![Mode 1 - Screenshot 3](assets/Mode%201%20ss3.png)
+![Mode 1 - Screenshot 4](assets/Mode%201%20ss4.png)
 
 ---
 
-### Example 3
+### Mode 2 — One-Shot Query
 
-**Input:**
-```
-[Sample user input or query]
+**Input (Windows CMD):**
+```cmd
+python -m src.main --query "chill music for studying"
 ```
 
 **Output:**
+
+![Mode 2 - Screenshot 1](assets/Mode%202%20ss1.png)
+![Mode 2 - Screenshot 2](assets/Mode%202%20ss2.png)
+
+---
+
+### Mode 3 — Interactive Mode
+
+**Input (Windows CMD):**
+```cmd
+python -m src.main
 ```
-[Resulting AI output]
-```
+> When prompted, typed: `happy songs for a party`
+
+**Output:**
+
+![Mode 3 - Screenshot 1](assets/Mode%203%20ss1.png)
+![Mode 3 - Screenshot 2](assets/Mode%203%20ss2.png)
+![Mode 3 - Screenshot 3](assets/Mode%203%20ss3.png)
+![Mode 3 - Screenshot 4](assets/Mode%203%20ss4.png)
 
 ---
 
 ## Design Decisions
 
-[Why you built it this way — explain the key architectural and technical choices you made. What trade-offs did you consider? What alternatives did you rule out and why?]
-
-| Decision | Rationale | Trade-off |
-|----------|-----------|-----------|
-| [Decision 1] | [Why] | [What was sacrificed] |
-| [Decision 2] | [Why] | [What was sacrificed] |
-| [Decision 3] | [Why] | [What was sacrificed] |
+- **Increased size of dataset from 18 to 200:** This was done for improved model accuracy and reduced bias.
+- **Included various artists, genres, moods:** Different artists, genres, and moods formed a more diverse dataset.
+- **Used an Ollama LLM to power the agentic loop:** Anthropic LLMs requires an API key and are not free of cost. Gemini LLMs requires an API key and account login. An Ollama LLM can be run locally, no account creation required, and is free of cost unless it is a larger project. Thus, Ollama is more accessible to a wider audience.
+- **Separated batch mode from the agentic loop:** The `--batch` flag routes directly to the Scoring Engine, bypassing Ollama entirely. This means the core recommender logic can be tested and evaluated offline without requiring the model to be running, which makes development faster and keeps scoring tests deterministic.
+- **Weighted energy proximity most heavily in the scoring formula:** Energy is the only continuous field in the scoring formula (vs. binary genre/mood/acoustic matches), so a small mismatch can still yield a decent score. Weighting it at +3.0 — compared to +1.0 for genre and +0.5 for acoustic — reflects that perceived song "feel" (tempo, intensity) has the strongest impact on whether a recommendation actually fits the listener's moment.
 
 ---
 
 ## Testing Summary
 
-### What Worked
+The project was tested through two complementary methods: a pytest suite targeting the scoring engine and recommender logic directly, and a manual batch evaluation running 8 predefined profiles (4 standard, 4 adversarial) through the full pipeline.
 
-- [Finding 1]
-- [Finding 2]
-
-### What Didn't
-
-- [Challenge 1]
-- [Challenge 2]
+- Scoring math is precise and predictable. All exact-value unit tests passed.
+- `explain_recommendation()` always produces output. Even when no attributes matched (genre miss, mood miss, maximum energy difference), the method returned a non-empty explanation string rather than failing.
+- `load_songs()` type conversion is reliable. Numeric CSV fields (`id`, `energy`, `tempo_bpm`, etc.) are correctly parsed into `int` and `float` types, not left as strings.
+- The agentic loop correctly interprets natural language. Both `--query` and interactive modes successfully translated plain-English requests ("chill music for studying", "happy songs for a party") into valid `UserProfile` fields and returned relevant recommendations.
+- However, genre is underweighted relative to energy. The scoring formula gives genre only +1.0 point versus energy's maximum of +3.0. This sometimes felt counterintuitive during manual review.
 
 ### What You Learned
 
-[Key takeaways from the testing process — surprises, limitations you discovered, and insights that would inform a future version.]
+The most interesting thing I learned is the different tradeoffs involved in choosing an LLM, balancing between accessibility and capability. I chose Ollama because the GitHub repository is public, so it should be usable and accessible by a more general audience instead of a specialized team. I also learned that human evaluation of the batch output is necessary to make sure everything is intuitive and recommendations make sense. The pytest suite confirmed that the scoring math is right, but it can't detect whether the ranked output actually feels like good music for the stated request.
 
 ---
 
 ## Reflection
 
-[What this project taught you about AI and problem-solving. How did your understanding of AI systems change? What would you do differently? What excites you about where this could go?]
+This project mainly taught me how different LLMs have their own advantages and disadvantages, and how significantly my choice of LLM powering the agentic loop changed how users would run this project. When I had initially asked Claude Code to assist me with coding the agentic loop, it had proposed using Anthropic definitively without explanation. After I questioned and discussed with Claude Code about tradeoffs and alternative LLMs, I chose to use Ollama because it was best fit for my situation and context. Thus, my biggest takeaways from this project is to always evaluate tradoffs associated with any tools I am using, and when taking assistance from AI, to always ask for explanations when AI output is unclear to continue maintaining control over my code. I believe that AI coding assistant should be used as tools to generate code quickly, but system design and architecture decisions should be made by humans to design the system according to context, audience and specifications.
 
 ---
 
 ## Acknowledgments
 
-- [CodePath AI 110 — Spring 2026]
-- [Any libraries, APIs, or resources used]
+- **CodePath AI 110 — Spring 2026** — course curriculum, project structure, and module assignments that guided CadenceMatcher 1.0 and 2.0
+- **[Ollama](https://ollama.com/)** — local LLM runtime that powers the agentic loop without requiring an API key or internet connection
+- **[Meta Llama 3.2](https://ollama.com/library/llama3.2)** (via Ollama) — the open-weight language model used for natural-language query interpretation and response synthesis
+- **[openai Python SDK](https://github.com/openai/openai-python)** — used as the OpenAI-compatible client to communicate with the local Ollama server
+- **[pandas](https://pandas.pydata.org/)** — CSV catalog loading and data manipulation
+- **[pytest](https://docs.pytest.org/)** — unit testing framework for the scoring engine and recommender logic
+- **[Claude Code](https://claude.ai/code)** (Anthropic) — AI coding assistant used during development; all design decisions and tradeoffs were reviewed and approved by the author
