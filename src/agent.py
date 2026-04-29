@@ -1,56 +1,110 @@
 """
-Agentic planning loop for the music recommender, powered by Google Gemini (free tier).
+Agentic planning loop for the music recommender, powered by Ollama (local, free).
 
 Flow: user request → load_catalog tool → get_recommendations tool → synthesized response.
 All steps are logged to logs/recommender.log.
 
-Get a free API key (no credit card) at: https://aistudio.google.com/apikey
+Setup:
+  1. Install Ollama: https://ollama.com/download
+  2. Pull a model: ollama pull llama3.2
+  3. No API key needed — runs entirely on your machine.
 """
 
 import json
 import os
 from typing import Optional
 
-import google.generativeai as genai
+from openai import OpenAI
 
 from .logger import get_logger
 from .recommender import load_songs, recommend_songs
 
 logger = get_logger("agent")
 
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+
+_client = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama",  # required by the library but not used by Ollama
+)
+
+_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "load_catalog",
+            "description": (
+                "Load the song catalog from a CSV file. "
+                "Call this first to discover available genres and moods before recommending."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "csv_path": {
+                        "type": "string",
+                        "description": "Path to songs CSV (default: data/songs.csv)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recommendations",
+            "description": (
+                "Score all songs against a user profile and return the top k matches "
+                "with scores and explanations. Use genres and moods returned by load_catalog."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "favorite_genre": {
+                        "type": "string",
+                        "description": "User's preferred genre (must exist in catalog)",
+                    },
+                    "favorite_mood": {
+                        "type": "string",
+                        "description": "User's preferred mood (must exist in catalog)",
+                    },
+                    "target_energy": {
+                        "type": "number",
+                        "description": "Target energy 0.0 (very calm) to 1.0 (very intense)",
+                    },
+                    "likes_acoustic": {
+                        "type": "boolean",
+                        "description": "True if user prefers acoustic-sounding songs",
+                    },
+                    "k": {
+                        "type": "integer",
+                        "description": "Number of songs to return (default: 5)",
+                    },
+                },
+                "required": [
+                    "favorite_genre",
+                    "favorite_mood",
+                    "target_energy",
+                    "likes_acoustic",
+                ],
+            },
+        },
+    },
+]
+
 _SYSTEM = """\
 You are a music recommendation agent. When given a user request:
 1. Call load_catalog to load the database and see available genres and moods.
 2. Infer the best-fit genre, mood, energy, and acoustic preference from the request.
-   - "chill / study / focus / relax" → energy 0.2–0.4, mood: calm/chill/focused/relaxed
-   - "workout / pump up / intense"   → energy 0.8–1.0, mood: intense/energetic/angry
-   - "party / dance / happy"         → energy 0.7–0.9, mood: happy/energetic
-   - "sad / heartbreak / melancholy" → energy 0.2–0.5, mood: sad/moody
+   - "chill / study / focus / relax" -> energy 0.2-0.4, mood: calm/chill/focused/relaxed
+   - "workout / pump up / intense"   -> energy 0.8-1.0, mood: intense/energetic/angry
+   - "party / dance / happy"         -> energy 0.7-0.9, mood: happy/energetic
+   - "sad / heartbreak / melancholy" -> energy 0.2-0.5, mood: sad/moody
    If the user's genre is absent from the catalog, pick the closest one and mention it.
 3. Call get_recommendations with the inferred profile.
 4. Reply with a warm, concise paragraph explaining your top picks and why they fit.
 """
 
-
-# ── tool stubs — Gemini introspects type hints and docstrings for the schema ──
-
-def load_catalog(csv_path: str = "data/songs.csv") -> dict:
-    """Load the song catalog from a CSV file. Call this first to discover available genres and moods before recommending."""
-    pass  # intercepted in the agent loop; never actually called
-
-
-def get_recommendations(
-    favorite_genre: str,
-    favorite_mood: str,
-    target_energy: float,
-    likes_acoustic: bool,
-    k: int = 5,
-) -> dict:
-    """Score all songs against a user profile and return the top k matches with scores and explanations. Use genres and moods returned by load_catalog."""
-    pass  # intercepted in the agent loop; never actually called
-
-
-# ── main agent loop ───────────────────────────────────────────────────────────
 
 def run_agent(user_request: str, songs_cache: Optional[list] = None) -> dict:
     """
@@ -63,32 +117,32 @@ def run_agent(user_request: str, songs_cache: Optional[list] = None) -> dict:
           "plan_steps":      list[str],  # tool calls made (for display)
         }
     """
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     logger.info("Agent started | request=%r", user_request)
 
-    catalog: Optional[list] = songs_cache
+    catalog: Optional[list] = songs_cache or load_songs("data/songs.csv")
     recommendations: list = []
     plan_steps: list = []
-
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        tools=[load_catalog, get_recommendations],
-        system_instruction=_SYSTEM,
-    )
-    chat = model.start_chat(enable_automatic_function_calling=False)
-    response = chat.send_message(user_request)
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": user_request},
+    ]
 
     for iteration in range(6):
-        logger.debug("Iteration %d", iteration + 1)
+        logger.debug("Iteration %d | messages=%d", iteration + 1, len(messages))
 
-        fn_calls = [
-            p.function_call
-            for p in response.parts
-            if p.function_call and p.function_call.name
-        ]
+        response = _client.chat.completions.create(
+            model=OLLAMA_MODEL,
+            messages=messages,
+            tools=_TOOLS,
+        )
 
-        if not fn_calls:
-            text = response.text
+        choice = response.choices[0]
+        finish_reason = choice.finish_reason
+        message = choice.message
+        logger.debug("finish_reason=%s", finish_reason)
+
+        if finish_reason == "stop":
+            text = message.content or ""
             logger.info(
                 "Agent done | steps=%d | recs=%d", len(plan_steps), len(recommendations)
             )
@@ -98,37 +152,35 @@ def run_agent(user_request: str, songs_cache: Optional[list] = None) -> dict:
                 "plan_steps": plan_steps,
             }
 
-        tool_responses = []
-        for fc in fn_calls:
-            name = fc.name
-            args = dict(fc.args)
-            plan_steps.append(f"[{name}] {json.dumps(args)}")
-            logger.info("Tool call: %s | %s", name, args)
+        if finish_reason != "tool_calls" or not message.tool_calls:
+            logger.warning("Unexpected finish_reason: %s", finish_reason)
+            break
+
+        messages.append(message)
+
+        for tool_call in message.tool_calls:
+            name = tool_call.function.name
+            inputs = json.loads(tool_call.function.arguments)
+
+            plan_steps.append(f"[{name}] {json.dumps(inputs)}")
+            logger.info("Tool call: %s | input=%s", name, inputs)
 
             try:
-                raw = _execute_tool(name, args, catalog)
+                raw = _execute_tool(name, inputs, catalog)
                 if name == "load_catalog":
                     catalog = raw.pop("_catalog")
                 elif name == "get_recommendations":
                     recommendations = raw.get("recommendations", [])
-                tool_responses.append(
-                    genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=name, response={"result": raw}
-                        )
-                    )
-                )
+                content = json.dumps(raw)
             except Exception as exc:
                 logger.error("Tool %s failed: %s", name, exc, exc_info=True)
-                tool_responses.append(
-                    genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=name, response={"error": str(exc)}
-                        )
-                    )
-                )
+                content = json.dumps({"error": str(exc)})
 
-        response = chat.send_message(tool_responses)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": content,
+            })
 
     logger.warning("Agent exhausted iteration limit without completing")
     return {
@@ -136,6 +188,17 @@ def run_agent(user_request: str, songs_cache: Optional[list] = None) -> dict:
         "recommendations": recommendations,
         "plan_steps": plan_steps,
     }
+
+
+def _parse_energy(value) -> float:
+    """Accept a float or a range string like '0.4-0.6' (local models sometimes return ranges)."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = str(value).strip()
+    if "-" in s:
+        parts = s.split("-")
+        return (float(parts[0]) + float(parts[1])) / 2
+    return float(s)
 
 
 def _execute_tool(name: str, inputs: dict, catalog: Optional[list]) -> dict:
@@ -157,7 +220,7 @@ def _execute_tool(name: str, inputs: dict, catalog: Optional[list]) -> dict:
             "song_count": len(songs),
             "genres": genres,
             "moods": moods,
-            "_catalog": songs,  # stripped by caller before sending to model
+            "_catalog": songs,
         }
 
     if name == "get_recommendations":
@@ -166,7 +229,7 @@ def _execute_tool(name: str, inputs: dict, catalog: Optional[list]) -> dict:
         prefs = {
             "favorite_genre": inputs["favorite_genre"],
             "favorite_mood": inputs["favorite_mood"],
-            "target_energy": float(inputs["target_energy"]),
+            "target_energy": _parse_energy(inputs["target_energy"]),
             "likes_acoustic": bool(inputs["likes_acoustic"]),
         }
         k = int(inputs.get("k", 5))

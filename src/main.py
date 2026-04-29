@@ -8,16 +8,15 @@ Usage:
 
 Setup:
   pip install -r requirements.txt
-  set GEMINI_API_KEY=<your key>    # Windows CMD
-  export GEMINI_API_KEY=<your key> # macOS / Linux / Git Bash
+  set ANTHROPIC_API_KEY=<your key>    # Windows CMD
+  export ANTHROPIC_API_KEY=<your key> # macOS / Linux / Git Bash
 
-  Get a free API key (no credit card) at: https://aistudio.google.com/apikey
+  Get an API key at: https://console.anthropic.com
 
-Interactive and --query modes call the Gemini API (free tier); --batch runs entirely offline.
+Interactive and --query modes call the Claude API; --batch runs entirely offline.
 """
 
 import argparse
-import os
 import sys
 
 from .agent import run_agent
@@ -60,24 +59,11 @@ def _print_agent_recommendations(recs: list) -> None:
     print(DIVIDER)
 
 
-def _check_api_key() -> bool:
-    if not os.environ.get("GEMINI_API_KEY"):
-        print("ERROR: GEMINI_API_KEY is not set.")
-        print("  Get a free key at: https://aistudio.google.com/apikey")
-        print("  Windows CMD : set GEMINI_API_KEY=<your key>")
-        print("  macOS/Linux : export GEMINI_API_KEY=<your key>")
-        logger.error("GEMINI_API_KEY not set — cannot start agent")
-        return False
-    return True
-
 
 # ── modes ─────────────────────────────────────────────────────────────────────
 
 def run_interactive() -> None:
     """Agent-powered interactive REPL: describe what you want, get recommendations."""
-    if not _check_api_key():
-        sys.exit(1)
-
     print("\nMusic Recommendation Agent")
     print("Describe what you want to listen to, or type 'quit' to exit.")
     print(DIVIDER)
@@ -122,9 +108,6 @@ def run_interactive() -> None:
 
 def run_single_query(query: str) -> None:
     """One-shot agent query from the command line."""
-    if not _check_api_key():
-        sys.exit(1)
-
     logger.info("One-shot query: %r", query)
     print(f"\nQuery: {query}")
     print("Planning and fetching recommendations...")

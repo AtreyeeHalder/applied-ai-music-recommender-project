@@ -16,3 +16,6 @@ venv/
 
 # Runtime logs
 logs/
+
+# Old README
+README_old.md
